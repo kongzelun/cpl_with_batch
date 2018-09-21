@@ -17,10 +17,10 @@ class Config:
     tensor_view = (-1, 32, 32)
     in_channels = 3
 
-    threshold = 10.0
+    threshold = 20.0
 
     # gamma * threshold < 10
-    gamma = 1.0
+    gamma = 0.1
 
 
 class DataSet(Dataset):
@@ -138,24 +138,34 @@ class Prototypes(object):
 
 
 class GCPLLoss(nn.Module):
-    def __init__(self, threshold, gamma=0.1, lambda_=0.1):
+    def __init__(self, threshold, gamma=0.1, b=10.0, tao=1.0, beta=1.0, lambda_=0.1):
         super(GCPLLoss, self).__init__()
 
         self.threshold = threshold
         self.lambda_ = lambda_
         self.gamma = gamma
+        self.b = b
+        self.tao = tao
+        self.beta = beta
 
     def forward(self, features, labels, all_prototypes):
         closest_prototypes = self.assign_prototype(features, labels, all_prototypes)
 
         dce_loss = 0.0
-        p_loss = 0.0
+        pw_loss = 0.0
         for feature, label, prototype in zip(features, labels, closest_prototypes):
             probability = compute_probability(feature, label.item(), all_prototypes, gamma=self.gamma)
             dce_loss += -probability.log()
-            p_loss += compute_distance(prototype, prototype).pow(2)
+            # p_loss += compute_distance(prototype, prototype).pow(2)
 
-        return dce_loss + self.lambda_ * p_loss
+            # pairwise loss
+            for l in all_prototypes:
+                prototypes = torch.cat(all_prototypes[l].features)
+                distances = compute_multi_distance(feature, prototypes)
+                d = distances.min()
+                pw_loss += self._g(self.b - (self.tao - d) * (1 if label.item() == l else -1))
+
+        return dce_loss + self.lambda_ * pw_loss
 
     def assign_prototype(self, features, labels, all_prototypes):
         features = tensor(features).detach()
@@ -182,6 +192,12 @@ class GCPLLoss(nn.Module):
             closest_prototypes.append(closest_prototype)
 
         return closest_prototypes
+
+    def _g(self, z):
+        if z > 10:
+            return z
+        else:
+            return (1 + (self.beta * z).exp()).log() / self.beta
 
 
 compute_distance = nn.PairwiseDistance(p=2, eps=1e-6)

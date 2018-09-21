@@ -41,11 +41,11 @@ def main():
 
     # trainset = models.DataSet(dataset[:5000])
     trainset = torchvision.datasets.CIFAR10(root='./data/cifar10', train=True, download=False, transform=transform)
-    trainloader = DataLoader(dataset=trainset, batch_size=batch_size, shuffle=True, num_workers=2)
+    trainloader = DataLoader(dataset=trainset, batch_size=batch_size, shuffle=True, num_workers=24)
 
     # testset = models.DataSet(dataset[5000:])
     testset = torchvision.datasets.CIFAR10(root='./data/cifar10', train=False, download=False, transform=transform)
-    testloader = DataLoader(dataset=testset, batch_size=1, shuffle=False, num_workers=2)
+    testloader = DataLoader(dataset=testset, batch_size=1, shuffle=False, num_workers=24)
 
     prototypes = {}
 
@@ -53,7 +53,7 @@ def main():
     net = models.DenseNet(device=device, number_layers=8, growth_rate=12, drop_rate=0.0)
     logger.info("DenseNet Channels: %d", net.channels)
 
-    gcpl = models.GCPLLoss(threshold=models.Config.threshold, gamma=models.Config.gamma, lambda_=0.001)
+    gcpl = models.GCPLLoss(threshold=models.Config.threshold, gamma=models.Config.gamma, b=models.Config.threshold, tao=1.0, beta=0.5, lambda_=0.001)
     sgd = optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
     if not os.path.exists("pkl"):
@@ -98,7 +98,7 @@ def main():
         correct = 0
 
         for i, (feature, label) in enumerate(testloader):
-            feature = net(feature.to(net.device)).view(batch_size, 1, -1)
+            feature = net(feature.to(net.device)).view(1, -1)
             predicted_label, probability, min_distance = models.predict(feature, prototypes)
 
             if label == predicted_label:
